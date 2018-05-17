@@ -187,6 +187,29 @@ func (m *Money) Split(n int) ([]*Money, error) {
 	return ms, nil
 }
 
+// SplitNonRR returns slice of Money structs with split Self value in given number.
+// After division leftover pennies will be added to the first party only.
+func (m *Money) SplitNonRR(n int) ([]*Money, error) {
+	if n <= 0 {
+		return nil, errors.New("Split must be higher than zero")
+	}
+
+	a := mutate.calc.divide(m.amount, int64(n))
+	ms := make([]*Money, n)
+
+	for i := 0; i < n; i++ {
+		ms[i] = &Money{amount: a, currency: m.currency}
+	}
+
+	l := mutate.calc.modulus(m.amount, int64(n)).val
+
+	// Add leftovers to the first party
+	ms[0].amount = mutate.calc.add(ms[0].amount, &Amount{l})
+
+
+	return ms, nil
+}
+
 // Allocate returns slice of Money structs with split Self value in given ratios.
 // It lets split money by given ratios without losing pennies and as Split operations distributes
 // leftover pennies amongst the parties with round-robin principle.
@@ -224,6 +247,45 @@ func (m *Money) Allocate(rs ...int) ([]*Money, error) {
 		ms[p].amount = mutate.calc.add(ms[p].amount, &Amount{sub})
 		lo -= sub
 	}
+
+	return ms, nil
+}
+
+// AllocateNonRR returns slice of Money structs with split Self value in given ratios.
+// It lets split money by given ratios without losing pennies and as Split operations distributes
+// leftover pennies to the first party.
+func (m *Money) AllocateNonRR(rs ...int) ([]*Money, error) {
+	if len(rs) == 0 {
+		return nil, errors.New("No ratios specified")
+	}
+
+	// Calculate sum of ratios
+	var sum int
+	for _, r := range rs {
+		sum += r
+	}
+
+	var total int64
+	var ms []*Money
+	for _, r := range rs {
+		party := &Money{
+			amount:   mutate.calc.allocate(m.amount, r, sum),
+			currency: m.currency,
+		}
+
+		ms = append(ms, party)
+		total += party.amount.val
+	}
+
+	// Calculate leftover value and divide to first parties
+	lo := m.amount.val - total
+	sub := int64(lo)
+	if lo < 0 {
+		sub = -sub
+	}
+
+
+	ms[0].amount = mutate.calc.add(ms[0].amount, &Amount{sub})
 
 	return ms, nil
 }
